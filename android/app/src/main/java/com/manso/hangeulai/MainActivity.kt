@@ -136,7 +136,7 @@ private fun HangeulAiApp() {
                 )
                 AppTab.Learn -> LearnScreen(sampleLesson)
                 AppTab.Write -> WritingScreen()
-                AppTab.Tutor -> TutorScreen(sampleLesson)
+                AppTab.Tutor -> AiTutorScreen(sampleLesson)
             }
         }
     }
