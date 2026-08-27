@@ -17,133 +17,39 @@ jobs:
         with:
           ref: android-mvp
 
-      - name: Patch Korean line height and prefer Google TTS
+      - name: Patch app code
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          p = Path('android/app/src/main/java/com/manso/hangeulai/MainActivity.kt')
-          s = p.read_text()
-
-          replacements = [
-              (
-                  'Text(lesson.korean, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)',
-                  'Text(lesson.korean, fontSize = 30.sp, lineHeight = 37.sp, fontWeight = FontWeight.ExtraBold)'
-              ),
-              (
-                  'Text(lesson.korean, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold)',
-                  'Text(lesson.korean, fontSize = 34.sp, lineHeight = 42.sp, fontWeight = FontWeight.ExtraBold)'
-              ),
+          main = Path('android/app/src/main/java/com/manso/hangeulai/MainActivity.kt')
+          s = main.read_text()
+          changes = [
+              ('Text(lesson.korean, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)', 'Text(lesson.korean, fontSize = 30.sp, lineHeight = 37.sp, fontWeight = FontWeight.ExtraBold)'),
+              ('Text(lesson.korean, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold)', 'Text(lesson.korean, fontSize = 34.sp, lineHeight = 42.sp, fontWeight = FontWeight.ExtraBold)'),
               ('var rate by remember { mutableStateOf(0.9f) }', 'var rate by remember { mutableStateOf(1.0f) }'),
-              ('FilterChip(selected = rate == 0.9f, onClick = { rate = 0.9f }, label = { Text("1.0× 일반") })',
-               'FilterChip(selected = rate == 1.0f, onClick = { rate = 1.0f }, label = { Text("1.0× 일반") })')
+              ('FilterChip(selected = rate == 0.9f, onClick = { rate = 0.9f }, label = { Text("1.0× 일반") })', 'FilterChip(selected = rate == 1.0f, onClick = { rate = 1.0f }, label = { Text("1.0× 일반") })')
           ]
-          for old, new in replacements:
+          for old, new in changes:
               if old not in s:
-                  raise SystemExit(f'Target not found: {old}')
+                  raise SystemExit('MainActivity target not found: ' + old)
               s = s.replace(old, new, 1)
 
-          old = '''    DisposableEffect(Unit) {
-        val engine = TextToSpeech(context) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.KOREAN
-            }
-        }
-        tts = engine
-        onDispose {
-            engine.stop()
-            engine.shutdown()
-        }
-    }'''
+          old_tts = '    DisposableEffect(Unit) {\n        val engine = TextToSpeech(context) { status ->\n            if (status == TextToSpeech.SUCCESS) {\n                tts?.language = Locale.KOREAN\n            }\n        }\n        tts = engine\n        onDispose {\n            engine.stop()\n            engine.shutdown()\n        }\n    }'
+          new_tts = '    DisposableEffect(Unit) {\n        val hasGoogleTts = runCatching { context.packageManager.getApplicationInfo("com.google.android.tts", 0) }.isSuccess\n        var engineRef: TextToSpeech? = null\n        val listener = TextToSpeech.OnInitListener { status ->\n            if (status == TextToSpeech.SUCCESS) {\n                engineRef?.language = Locale.KOREAN\n                val voice = engineRef?.voices?.filter { it.locale.language == "ko" && !it.isNetworkConnectionRequired }?.maxByOrNull { it.quality }\n                if (voice != null) engineRef?.voice = voice\n            }\n        }\n        val engine = if (hasGoogleTts) TextToSpeech(context, listener, "com.google.android.tts") else TextToSpeech(context, listener)\n        engineRef = engine\n        tts = engine\n        onDispose {\n            engine.stop()\n            engine.shutdown()\n        }\n    }'
+          if old_tts not in s:
+              raise SystemExit('TTS block not found')
+          main.write_text(s.replace(old_tts, new_tts, 1))
 
-          new = '''    DisposableEffect(Unit) {
-        // Prefer Google Speech Services when it is installed. Samsung/default TTS
-        // remains the fallback so listening still works on every device.
-        val hasGoogleTts = runCatching {
-            context.packageManager.getApplicationInfo("com.google.android.tts", 0)
-        }.isSuccess
-
-        var engineRef: TextToSpeech? = null
-        val listener = TextToSpeech.OnInitListener { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                engineRef?.language = Locale.KOREAN
-                val bestOfflineKoreanVoice = engineRef?.voices
-                    ?.filter { it.locale.language == "ko" && !it.isNetworkConnectionRequired }
-                    ?.maxByOrNull { it.quality }
-                if (bestOfflineKoreanVoice != null) {
-                    engineRef?.voice = bestOfflineKoreanVoice
-                }
-            }
-        }
-
-        val engine = if (hasGoogleTts) {
-            TextToSpeech(context, listener, "com.google.android.tts")
-        } else {
-            TextToSpeech(context, listener)
-        }
-        engineRef = engine
-        tts = engine
-
-        onDispose {
-            engine.stop()
-            engine.shutdown()
-        }
-    }'''
-
-          if old not in s:
-              raise SystemExit('TTS initialization block not found')
-          s = s.replace(old, new, 1)
-          p.write_text(s)
-          PY
-
-      - name: Add official Gemma download link to tutor screen
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          p = Path('android/app/src/main/java/com/manso/hangeulai/AiTutorScreen.kt')
-          s = p.read_text()
-
-          if 'import android.content.Intent' not in s:
-              s = s.replace('package com.manso.hangeulai\n\n', 'package com.manso.hangeulai\n\nimport android.content.Intent\nimport android.net.Uri\n', 1)
-
-          old = '''                    Text("Gemma 3 1B IT", fontWeight = FontWeight.ExtraBold, fontSize = 19.sp)
-                    Text("약 584MB · 최초 1회 설치 · Wi-Fi 권장", color = Color.Gray, fontSize = 12.sp)
-                    Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) },
-                        enabled = !isBusy,
-                        colors = ButtonDefaults.buttonColors(containerColor = TutorPurple),
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text(if (isBusy) "처리 중…" else "Gemma 모델 가져오기") }
-                    Spacer(Modifier.height(10.dp))
-                    Text("현재 테스트 버전에서는 .litertlm 파일을 한 번 선택해야 합니다. AI Edge Gallery가 받은 모델은 Android 앱 전용 저장공간에 있어 Hangeul AI가 직접 읽을 수 없습니다.", color = Color.Gray, fontSize = 11.sp, lineHeight = 17.sp)'''
-
-          new = '''                    Text("Gemma 3 1B IT", fontWeight = FontWeight.ExtraBold, fontSize = 19.sp)
-                    Text("최초 1회 설치 · Wi-Fi 권장", color = Color.Gray, fontSize = 12.sp)
-                    Spacer(Modifier.height(12.dp))
-                    OutlinedButton(
-                        onClick = {
-                            val url = "https://huggingface.co/litert-community/Gemma3-1B-IT/blob/main/Gemma3-1B-IT_q4_ekv1280_sm8550.litertlm"
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                        },
-                        enabled = !isBusy,
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("공식 Gemma 다운로드 열기 ↗") }
-                    Spacer(Modifier.height(8.dp))
-                    Button(
-                        onClick = { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) },
-                        enabled = !isBusy,
-                        colors = ButtonDefaults.buttonColors(containerColor = TutorPurple),
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text(if (isBusy) "처리 중…" else "다운로드한 모델 선택") }
-                    Spacer(Modifier.height(10.dp))
-                    Text("Hugging Face에서 Gemma 라이선스에 동의한 뒤 .litertlm 파일을 다운로드하고, 위 버튼으로 파일을 선택하세요. 현재 테스트 버전에서는 모델을 한 번 직접 가져와야 합니다.", color = Color.Gray, fontSize = 11.sp, lineHeight = 17.sp)'''
-
-          if old not in s:
-              raise SystemExit('Gemma setup block not found')
-          s = s.replace(old, new, 1)
-          p.write_text(s)
+          tutor = Path('android/app/src/main/java/com/manso/hangeulai/AiTutorScreen.kt')
+          t = tutor.read_text()
+          if 'import android.content.Intent' not in t:
+              t = t.replace('package com.manso.hangeulai\n\n', 'package com.manso.hangeulai\n\nimport android.content.Intent\nimport android.net.Uri\n', 1)
+          old = '                    Text("Gemma 3 1B IT", fontWeight = FontWeight.ExtraBold, fontSize = 19.sp)\n                    Text("약 584MB · 최초 1회 설치 · Wi-Fi 권장", color = Color.Gray, fontSize = 12.sp)\n                    Spacer(Modifier.height(12.dp))\n                    Button(\n                        onClick = { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) },\n                        enabled = !isBusy,\n                        colors = ButtonDefaults.buttonColors(containerColor = TutorPurple),\n                        modifier = Modifier.fillMaxWidth()\n                    ) { Text(if (isBusy) "처리 중…" else "Gemma 모델 가져오기") }\n                    Spacer(Modifier.height(10.dp))\n                    Text("현재 테스트 버전에서는 .litertlm 파일을 한 번 선택해야 합니다. AI Edge Gallery가 받은 모델은 Android 앱 전용 저장공간에 있어 Hangeul AI가 직접 읽을 수 없습니다.", color = Color.Gray, fontSize = 11.sp, lineHeight = 17.sp)'
+          new = '                    Text("Gemma 3 1B IT", fontWeight = FontWeight.ExtraBold, fontSize = 19.sp)\n                    Text("최초 1회 설치 · Wi-Fi 권장", color = Color.Gray, fontSize = 12.sp)\n                    Spacer(Modifier.height(12.dp))\n                    OutlinedButton(\n                        onClick = {\n                            val url = "https://huggingface.co/litert-community/Gemma3-1B-IT/blob/main/Gemma3-1B-IT_q4_ekv1280_sm8550.litertlm"\n                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))\n                        },\n                        enabled = !isBusy,\n                        modifier = Modifier.fillMaxWidth()\n                    ) { Text("공식 Gemma 다운로드 열기 ↗") }\n                    Spacer(Modifier.height(8.dp))\n                    Button(\n                        onClick = { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) },\n                        enabled = !isBusy,\n                        colors = ButtonDefaults.buttonColors(containerColor = TutorPurple),\n                        modifier = Modifier.fillMaxWidth()\n                    ) { Text(if (isBusy) "처리 중…" else "다운로드한 모델 선택") }\n                    Spacer(Modifier.height(10.dp))\n                    Text("Hugging Face에서 Gemma 라이선스에 동의한 뒤 .litertlm 파일을 다운로드하고, 위 버튼으로 파일을 선택하세요.", color = Color.Gray, fontSize = 11.sp, lineHeight = 17.sp)'
+          if old not in t:
+              raise SystemExit('Tutor setup block not found')
+          tutor.write_text(t.replace(old, new, 1))
           PY
 
       - name: Commit patch
