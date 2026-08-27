@@ -2,6 +2,7 @@ package com.manso.hangeulai
 
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
+import android.speech.tts.Voice
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
@@ -104,6 +105,7 @@ class MainActivity : ComponentActivity() {
 private fun HangeulAiApp() {
     var selectedTab by remember { mutableStateOf(AppTab.Home) }
     var lessonIndex by remember { mutableStateOf((java.time.LocalDate.now().dayOfYear - 1) % lessonCatalog.size) }
+    var showSettings by remember { mutableStateOf(false) }
     val currentLesson = lessonCatalog[lessonIndex]
 
     Scaffold(
@@ -126,13 +128,16 @@ private fun HangeulAiApp() {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            when (selectedTab) {
+            if (showSettings) {
+                SettingsScreen(onBack = { showSettings = false })
+            } else when (selectedTab) {
                 AppTab.Home -> HomeScreen(
                     lesson = currentLesson,
                     onNextLesson = { lessonIndex = (lessonIndex + 1) % lessonCatalog.size },
                     onLearn = { selectedTab = AppTab.Learn },
                     onWrite = { selectedTab = AppTab.Write },
-                    onTutor = { selectedTab = AppTab.Tutor }
+                    onTutor = { selectedTab = AppTab.Tutor },
+                    onSettings = { showSettings = true }
                 )
                 AppTab.Learn -> LearnScreen(currentLesson)
                 AppTab.Write -> WritingScreen()
@@ -148,7 +153,8 @@ private fun HomeScreen(
     onNextLesson: () -> Unit,
     onLearn: () -> Unit,
     onWrite: () -> Unit,
-    onTutor: () -> Unit
+    onTutor: () -> Unit,
+    onSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val saved = remember {
@@ -162,7 +168,11 @@ private fun HomeScreen(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 24.dp)
     ) {
-        Text("HANGEUL AI", color = Accent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text("HANGEUL AI", color = Accent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            Spacer(Modifier.weight(1f))
+            Text("⚙", fontSize = 20.sp, modifier = Modifier.clickable { onSettings() }.padding(8.dp))
+        }
         Spacer(Modifier.height(6.dp))
         Text("오늘도 한국어\n한 걸음!", fontSize = 36.sp, lineHeight = 40.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(8.dp))
@@ -277,7 +287,8 @@ private fun MiniStatCard(label: String, value: String, modifier: Modifier = Modi
 @Composable
 private fun LearnScreen(lesson: Lesson) {
     val context = LocalContext.current
-    var rate by remember { mutableStateOf(1.0f) }
+    val prefs = remember { context.getSharedPreferences("hangeul_ai", 0) }
+    val rate = prefs.getFloat("tts_rate", 1.0f)
     var saved by remember {
         mutableStateOf(
             context.getSharedPreferences("hangeul_ai", 0)
@@ -292,7 +303,9 @@ private fun LearnScreen(lesson: Lesson) {
         val listener = TextToSpeech.OnInitListener { status ->
             if (status == TextToSpeech.SUCCESS) {
                 engineRef?.language = Locale.KOREAN
-                val voice = engineRef?.voices?.filter { it.locale.language == "ko" && !it.isNetworkConnectionRequired }?.maxByOrNull { it.quality }
+                val voices = engineRef?.voices?.filter { it.locale.language == "ko" } ?: emptySet()
+                val savedVoice = prefs.getString("tts_voice", null)
+                val voice = voices.firstOrNull { it.name == savedVoice } ?: voices.filter { !it.isNetworkConnectionRequired }.maxByOrNull { it.quality } ?: voices.firstOrNull()
                 if (voice != null) engineRef?.voice = voice
             }
         }
@@ -354,11 +367,6 @@ private fun LearnScreen(lesson: Lesson) {
                     Spacer(Modifier.height(10.dp))
                 }
 
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = rate == 0.7f, onClick = { rate = 0.7f }, label = { Text("0.7× 천천히") })
-                    FilterChip(selected = rate == 1.0f, onClick = { rate = 1.0f }, label = { Text("1.0× 일반") })
-                }
                 Spacer(Modifier.height(10.dp))
                 Button(
                     onClick = {
@@ -416,6 +424,110 @@ private fun LearnScreen(lesson: Lesson) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(if (saved) "★ 저장됨" else "☆ 이 문장 저장")
+        }
+    }
+}
+
+
+@Composable
+private fun SettingsScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("hangeul_ai", 0) }
+    var voices by remember { mutableStateOf<List<Voice>>(emptyList()) }
+    var selectedVoice by remember { mutableStateOf(prefs.getString("tts_voice", null)) }
+    var rate by remember { mutableStateOf(prefs.getFloat("tts_rate", 1.0f)) }
+    var previewTts by remember { mutableStateOf<TextToSpeech?>(null) }
+
+    DisposableEffect(Unit) {
+        var ref: TextToSpeech? = null
+        val listener = TextToSpeech.OnInitListener { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                ref?.language = Locale.KOREAN
+                voices = ref?.voices
+                    ?.filter { it.locale.language == "ko" }
+                    ?.sortedWith(compareBy<Voice> { it.isNetworkConnectionRequired }.thenByDescending { it.quality })
+                    ?: emptyList()
+            }
+        }
+        val hasGoogle = runCatching {
+            context.packageManager.getApplicationInfo("com.google.android.tts", 0)
+        }.isSuccess
+        val engine = if (hasGoogle) {
+            TextToSpeech(context, listener, "com.google.android.tts")
+        } else {
+            TextToSpeech(context, listener)
+        }
+        ref = engine
+        previewTts = engine
+        onDispose {
+            engine.stop()
+            engine.shutdown()
+        }
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp)
+    ) {
+        TextButton(onClick = onBack) { Text("← 돌아가기", color = Ink) }
+        Spacer(Modifier.height(8.dp))
+        Text("설정", fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+        Text("듣기 설정만 간단하게 바꿀 수 있어요.", color = Muted)
+        Spacer(Modifier.height(24.dp))
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            shape = RoundedCornerShape(22.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Text("한국어 음성", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.height(8.dp))
+                voices.take(4).forEachIndexed { index, voice ->
+                    FilterChip(
+                        selected = selectedVoice == voice.name,
+                        onClick = {
+                            selectedVoice = voice.name
+                            previewTts?.voice = voice
+                            prefs.edit().putString("tts_voice", voice.name).apply()
+                            previewTts?.setSpeechRate(rate)
+                            previewTts?.speak(
+                                "안녕하세요. 한국어를 같이 배워요.",
+                                TextToSpeech.QUEUE_FLUSH,
+                                null,
+                                "preview"
+                            )
+                        },
+                        label = {
+                            Text("음성 ${index + 1}" + if (voice.isNetworkConnectionRequired) " · 온라인" else "")
+                        }
+                    )
+                }
+
+                Spacer(Modifier.height(18.dp))
+                Text("말하기 속도", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = rate == 0.7f,
+                        onClick = {
+                            rate = 0.7f
+                            prefs.edit().putFloat("tts_rate", rate).apply()
+                        },
+                        label = { Text("천천히") }
+                    )
+                    FilterChip(
+                        selected = rate == 1.0f,
+                        onClick = {
+                            rate = 1.0f
+                            prefs.edit().putFloat("tts_rate", rate).apply()
+                        },
+                        label = { Text("일반") }
+                    )
+                }
+            }
         }
     }
 }
