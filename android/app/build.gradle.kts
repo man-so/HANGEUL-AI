@@ -12,7 +12,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "0.2.0"
     }
 
     buildFeatures {
@@ -37,6 +37,12 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.2")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+
+    // Official Google AI Edge LiteRT-LM Android runtime.
+    // The model itself is not bundled in the APK because Gemma model files are large
+    // and require the user to accept the Gemma license before downloading.
+    implementation("com.google.ai.edge.litertlm:litertlm-android:latest.release")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
