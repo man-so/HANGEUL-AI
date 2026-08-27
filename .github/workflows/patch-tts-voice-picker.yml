@@ -1,0 +1,72 @@
+name: Patch TTS Voice Picker
+
+on:
+  push:
+    branches: [android-mvp]
+    paths:
+      - '.github/workflows/patch-tts-voice-picker.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: android-mvp
+      - name: Add Korean TTS voice picker
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('android/app/src/main/java/com/manso/hangeulai/MainActivity.kt')
+          s=p.read_text()
+          s=s.replace('import android.speech.tts.TextToSpeech\n','import android.speech.tts.TextToSpeech\nimport android.speech.tts.Voice\n')
+          s=s.replace('    var tts by remember { mutableStateOf<TextToSpeech?>(null) }\n','    var tts by remember { mutableStateOf<TextToSpeech?>(null) }\n    var koreanVoices by remember { mutableStateOf<List<Voice>>(emptyList()) }\n    var selectedVoiceName by remember { mutableStateOf<String?>(null) }\n')
+          old='''                engineRef?.language = Locale.KOREAN
+                val voice = engineRef?.voices?.filter { it.locale.language == "ko" && !it.isNetworkConnectionRequired }?.maxByOrNull { it.quality }
+                if (voice != null) engineRef?.voice = voice'''
+          new='''                engineRef?.language = Locale.KOREAN
+                val voices = engineRef?.voices?.filter { it.locale.language == "ko" }?.sortedWith(compareBy<Voice> { it.isNetworkConnectionRequired }.thenByDescending { it.quality }) ?: emptyList()
+                koreanVoices = voices
+                val preferred = voices.firstOrNull { !it.isNetworkConnectionRequired } ?: voices.firstOrNull()
+                if (preferred != null) {
+                    engineRef?.voice = preferred
+                    selectedVoiceName = preferred.name
+                }'''
+          if old not in s: raise SystemExit('voice init target missing')
+          s=s.replace(old,new,1)
+          target='''                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = rate == 0.7f, onClick = { rate = 0.7f }, label = { Text("0.7× 천천히") })
+                    FilterChip(selected = rate == 1.0f, onClick = { rate = 1.0f }, label = { Text("1.0× 일반") })
+                }'''
+          replacement='''                Spacer(Modifier.height(8.dp))
+                if (koreanVoices.isNotEmpty()) {
+                    Text("한국어 음성 선택", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Spacer(Modifier.height(6.dp))
+                    koreanVoices.take(4).forEachIndexed { index, voice ->
+                        val label = "음성 ${index + 1}" + if (voice.isNetworkConnectionRequired) " · 온라인" else " · 오프라인"
+                        FilterChip(
+                            selected = selectedVoiceName == voice.name,
+                            onClick = { tts?.voice = voice; selectedVoiceName = voice.name },
+                            label = { Text(label) }
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = rate == 0.7f, onClick = { rate = 0.7f }, label = { Text("0.7× 천천히") })
+                    FilterChip(selected = rate == 1.0f, onClick = { rate = 1.0f }, label = { Text("1.0× 일반") })
+                }'''
+          if target not in s: raise SystemExit('UI target missing')
+          p.write_text(s.replace(target,replacement,1))
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add android/app/src/main/java/com/manso/hangeulai/MainActivity.kt
+          git commit -m 'Add selectable Korean TTS voices'
+          git push origin HEAD:android-mvp
