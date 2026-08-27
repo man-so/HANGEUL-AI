@@ -1,5 +1,7 @@
 package com.manso.hangeulai
 
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -167,16 +169,25 @@ fun AiTutorScreen(lesson: Lesson) {
                 if (!isGemmaReady) {
                     Text("권장 모델", color = Color.Gray, fontSize = 11.sp)
                     Text("Gemma 3 1B IT", fontWeight = FontWeight.ExtraBold, fontSize = 19.sp)
-                    Text("약 584MB · 최초 1회 설치 · Wi-Fi 권장", color = Color.Gray, fontSize = 12.sp)
+                    Text("최초 1회 설치 · Wi-Fi 권장", color = Color.Gray, fontSize = 12.sp)
                     Spacer(Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = {
+                            val url = "https://huggingface.co/litert-community/Gemma3-1B-IT/blob/main/Gemma3-1B-IT_q4_ekv1280_sm8550.litertlm"
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        },
+                        enabled = !isBusy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("공식 Gemma 다운로드 열기 ↗") }
+                    Spacer(Modifier.height(8.dp))
                     Button(
                         onClick = { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) },
                         enabled = !isBusy,
                         colors = ButtonDefaults.buttonColors(containerColor = TutorPurple),
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text(if (isBusy) "처리 중…" else "Gemma 모델 가져오기") }
+                    ) { Text(if (isBusy) "처리 중…" else "다운로드한 모델 선택") }
                     Spacer(Modifier.height(10.dp))
-                    Text("현재 테스트 버전에서는 .litertlm 파일을 한 번 선택해야 합니다. AI Edge Gallery가 받은 모델은 Android 앱 전용 저장공간에 있어 Hangeul AI가 직접 읽을 수 없습니다.", color = Color.Gray, fontSize = 11.sp, lineHeight = 17.sp)
+                    Text("Hugging Face에서 Gemma 라이선스에 동의한 뒤 .litertlm 파일을 다운로드하고, 위 버튼으로 파일을 선택하세요.", color = Color.Gray, fontSize = 11.sp, lineHeight = 17.sp)
                 } else {
                     Text("이제 파일을 다시 선택할 필요 없이 AI 튜터를 사용할 수 있어요.", color = Color.Gray, fontSize = 12.sp)
                     Spacer(Modifier.height(10.dp))

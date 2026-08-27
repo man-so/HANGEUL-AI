@@ -181,7 +181,7 @@ private fun HomeScreen(
                     Text(lesson.level, modifier = Modifier.background(WarmBackground, RoundedCornerShape(20.dp)).padding(horizontal = 10.dp, vertical = 5.dp), fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.height(18.dp))
-                Text(lesson.korean, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+                Text(lesson.korean, fontSize = 30.sp, lineHeight = 37.sp, fontWeight = FontWeight.ExtraBold)
                 Spacer(Modifier.height(7.dp))
                 Text(lesson.translation, color = Muted, fontSize = 16.sp)
                 Spacer(Modifier.height(7.dp))
@@ -277,7 +277,7 @@ private fun MiniStatCard(label: String, value: String, modifier: Modifier = Modi
 @Composable
 private fun LearnScreen(lesson: Lesson) {
     val context = LocalContext.current
-    var rate by remember { mutableStateOf(0.9f) }
+    var rate by remember { mutableStateOf(1.0f) }
     var saved by remember {
         mutableStateOf(
             context.getSharedPreferences("hangeul_ai", 0)
@@ -287,11 +287,17 @@ private fun LearnScreen(lesson: Lesson) {
     var tts by remember { mutableStateOf<TextToSpeech?>(null) }
 
     DisposableEffect(Unit) {
-        val engine = TextToSpeech(context) { status ->
+        val hasGoogleTts = runCatching { context.packageManager.getApplicationInfo("com.google.android.tts", 0) }.isSuccess
+        var engineRef: TextToSpeech? = null
+        val listener = TextToSpeech.OnInitListener { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.KOREAN
+                engineRef?.language = Locale.KOREAN
+                val voice = engineRef?.voices?.filter { it.locale.language == "ko" && !it.isNetworkConnectionRequired }?.maxByOrNull { it.quality }
+                if (voice != null) engineRef?.voice = voice
             }
         }
+        val engine = if (hasGoogleTts) TextToSpeech(context, listener, "com.google.android.tts") else TextToSpeech(context, listener)
+        engineRef = engine
         tts = engine
         onDispose {
             engine.stop()
@@ -322,7 +328,7 @@ private fun LearnScreen(lesson: Lesson) {
                     Text(lesson.level, modifier = Modifier.background(WarmBackground, RoundedCornerShape(20.dp)).padding(horizontal = 10.dp, vertical = 5.dp), fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.height(20.dp))
-                Text(lesson.korean, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold)
+                Text(lesson.korean, fontSize = 34.sp, lineHeight = 42.sp, fontWeight = FontWeight.ExtraBold)
                 Spacer(Modifier.height(8.dp))
                 Text(lesson.translation, fontSize = 17.sp, color = Muted)
                 Spacer(Modifier.height(22.dp))
@@ -351,7 +357,7 @@ private fun LearnScreen(lesson: Lesson) {
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = rate == 0.7f, onClick = { rate = 0.7f }, label = { Text("0.7× 천천히") })
-                    FilterChip(selected = rate == 0.9f, onClick = { rate = 0.9f }, label = { Text("1.0× 일반") })
+                    FilterChip(selected = rate == 1.0f, onClick = { rate = 1.0f }, label = { Text("1.0× 일반") })
                 }
                 Spacer(Modifier.height(10.dp))
                 Button(
