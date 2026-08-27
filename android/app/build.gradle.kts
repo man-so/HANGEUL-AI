@@ -11,8 +11,8 @@ android {
         applicationId = "com.manso.hangeulai"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.2.0"
+        versionCode = 2
+        versionName = "0.3.0"
     }
 
     buildFeatures {
@@ -37,12 +37,14 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.2")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
-    // Official Google AI Edge LiteRT-LM Android runtime.
-    // The model itself is not bundled in the APK because Gemma model files are large
-    // and require the user to accept the Gemma license before downloading.
-    implementation("com.google.ai.edge.litertlm:litertlm-android:latest.release")
+    // LiteRT-LM 0.14.0 is compiled against coroutines 1.11.x. Pinning the
+    // runtime avoids a known completion-time NoSuchMethodError on Android.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+
+    // Official Google AI Edge LiteRT-LM runtime for local Gemma inference.
+    // The 584 MB Gemma model is imported separately and is not bundled in APK.
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.14.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
