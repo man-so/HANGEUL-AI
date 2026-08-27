@@ -1,0 +1,68 @@
+name: Patch Real Korean Expressions
+
+on:
+  push:
+    branches: [feature/real-korean-expressions]
+    paths:
+      - '.github/workflows/patch-real-korean-expressions.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/real-korean-expressions
+      - name: Wire expression dataset into Learn tab
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/src/main/java/com/manso/hangeulai/MainActivity.kt')
+          s = p.read_text()
+          marker = 'import java.util.Locale\n'
+          imports = 'import com.manso.hangeulai.expressions.KoreanExpressionRepository\nimport com.manso.hangeulai.expressions.KoreanExpressionScreen\n'
+          if imports not in s:
+              s = s.replace(marker, marker + imports, 1)
+          old = '''    var selectedTab by remember { mutableStateOf(AppTab.Home) }
+    var lessonIndex by remember { mutableStateOf((java.time.LocalDate.now().dayOfYear - 1) % lessonCatalog.size) }
+    val currentLesson = lessonCatalog[lessonIndex]'''
+          new = '''    var selectedTab by remember { mutableStateOf(AppTab.Home) }
+    var lessonIndex by remember { mutableStateOf((java.time.LocalDate.now().dayOfYear - 1) % lessonCatalog.size) }
+    val currentLesson = lessonCatalog[lessonIndex]
+    val context = LocalContext.current
+    val realExpressions = remember { KoreanExpressionRepository.load(context) }
+    var showRealExpressions by remember { mutableStateOf(false) }'''
+          if old not in s: raise SystemExit('app state block not found')
+          s = s.replace(old, new, 1)
+          old = 'AppTab.Learn -> LearnScreen(currentLesson)'
+          new = 'AppTab.Learn -> if (showRealExpressions) KoreanExpressionScreen(realExpressions) else LearnScreen(currentLesson, onOpenRealExpressions = { showRealExpressions = true })'
+          if old not in s: raise SystemExit('learn route not found')
+          s = s.replace(old, new, 1)
+          old = 'private fun LearnScreen(lesson: Lesson) {'
+          new = 'private fun LearnScreen(lesson: Lesson, onOpenRealExpressions: () -> Unit = {}) {'
+          if old not in s: raise SystemExit('LearnScreen signature not found')
+          s = s.replace(old, new, 1)
+          anchor = '''        Spacer(Modifier.height(24.dp))
+
+        Card('''
+          insert = '''        Spacer(Modifier.height(16.dp))
+        OutlinedButton(onClick = onOpenRealExpressions, modifier = Modifier.fillMaxWidth()) {
+            Text("💬 한국인이 실제로 쓰는 표현 배우기")
+        }
+        Spacer(Modifier.height(16.dp))
+
+        Card('''
+          if anchor not in s: raise SystemExit('LearnScreen card anchor not found')
+          s = s.replace(anchor, insert, 1)
+          p.write_text(s)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add android/app/src/main/java/com/manso/hangeulai/MainActivity.kt
+          git commit -m 'Expose real Korean expressions from Learn tab'
+          git push origin HEAD:feature/real-korean-expressions
