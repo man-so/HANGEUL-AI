@@ -33,6 +33,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -518,7 +519,16 @@ private fun TutorScreen(lesson: Lesson) {
                     value = question,
                     onValueChange = { question = it },
                     label = { Text("AI 튜터에게 질문") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        cursorColor = Color.White,
+                        focusedBorderColor = Purple,
+                        unfocusedBorderColor = Color(0xFF57535F),
+                        focusedLabelColor = Color(0xFFCFC5FF),
+                        unfocusedLabelColor = Color(0xFFB7B4BE)
+                    )
                 )
                 Spacer(Modifier.height(10.dp))
                 Button(
