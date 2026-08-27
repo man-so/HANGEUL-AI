@@ -13,18 +13,30 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val WarmBackground = Color(0xFFF7F5F0)
 private val Accent = Color(0xFFE84C3D)
 private val Muted = Color(0xFF6E6B65)
 
 @Composable
-fun KoreanExpressionScreen(expressions: List<KoreanExpression>, language: String = "ko") {
+fun KoreanExpressionScreen(
+    expressions: List<KoreanExpression>,
+    language: String = "ko",
+    onBack: () -> Unit = {}
+) {
     var index by remember { mutableStateOf(0) }
     var detail by remember { mutableStateOf(false) }
-    if (expressions.isEmpty()) return
-    val item = expressions[index % expressions.size]
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
+        TextButton(onClick = onBack, contentPadding = PaddingValues(0.dp)) {
+            Text("← 문장 학습으로", color = Muted, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(4.dp))
+
+        if (expressions.isEmpty()) {
+            Text("표현 데이터를 불러오지 못했어요.", color = Muted)
+            return@Column
+        }
+
+        val item = expressions[index % expressions.size]
         Text("오늘의 진짜 한국어", color = Accent, fontWeight = FontWeight.Bold, fontSize = 13.sp)
         Spacer(Modifier.height(10.dp))
         Text(item.expression, fontSize = 38.sp, lineHeight = 46.sp, fontWeight = FontWeight.ExtraBold)
@@ -50,7 +62,10 @@ fun KoreanExpressionScreen(expressions: List<KoreanExpression>, language: String
             }
         }
         Spacer(Modifier.height(16.dp))
-        OutlinedButton(onClick = { index = (index + 1) % expressions.size; detail = false }, modifier = Modifier.fillMaxWidth()) {
+        OutlinedButton(
+            onClick = { index = (index + 1) % expressions.size; detail = false },
+            modifier = Modifier.fillMaxWidth()
+        ) {
             Text("다른 표현 보기 ↻")
         }
     }
@@ -67,7 +82,11 @@ private fun UsageRow(usage: ExpressionUsage) {
 
 @Composable
 private fun UsageBadge(label: String, value: String, modifier: Modifier) {
-    val icon = when (value) { "recommended" -> "🟢"; "caution" -> "🟡"; else -> "🔴" }
+    val icon = when (value) {
+        "recommended" -> "🟢"
+        "caution" -> "🟡"
+        else -> "🔴"
+    }
     Box(modifier.background(Color.White, RoundedCornerShape(14.dp)).padding(horizontal = 8.dp, vertical = 12.dp)) {
         Text("$label $icon", fontSize = 12.sp, fontWeight = FontWeight.Bold)
     }
@@ -75,7 +94,11 @@ private fun UsageBadge(label: String, value: String, modifier: Modifier) {
 
 @Composable
 private fun DetailCard(title: String, body: String) {
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Column(Modifier.padding(18.dp)) {
             Text(title, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
             Spacer(Modifier.height(7.dp))
