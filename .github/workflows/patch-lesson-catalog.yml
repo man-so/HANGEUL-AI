@@ -1,0 +1,180 @@
+name: Patch Lesson Catalog
+
+on:
+  push:
+    branches: [android-mvp]
+    paths:
+      - '.github/workflows/patch-lesson-catalog.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: android-mvp
+      - name: Integrate lesson catalog
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/src/main/java/com/manso/hangeulai/MainActivity.kt')
+          s = p.read_text()
+
+          old_data = '''data class Lesson(
+              val korean: String,
+              val translation: String,
+              val level: String,
+              val explanation: String,
+              val vocabulary: List<Pair<String, String>>
+          )
+
+          private val sampleLesson = Lesson(
+              korean = "시작이 반이다.",
+              translation = "Well begun is half done.",
+              level = "A1",
+              explanation = "무언가를 시작하는 일이 가장 어려울 때가 많아요. 일단 시작했다면 이미 중요한 첫걸음을 내디딘 것입니다.",
+              vocabulary = listOf(
+                  "시작" to "start · beginning",
+                  "반" to "half",
+                  "이다" to "to be"
+              )
+          )'''
+          new_data = '''data class Lesson(
+              val id: String,
+              val collection: String,
+              val speaker: String,
+              val korean: String,
+              val simpleKorean: String,
+              val translation: String,
+              val japanese: String,
+              val grammar: List<GrammarPoint>,
+              val example: String,
+              val level: String,
+              val category: List<String>,
+              val sourceType: String,
+              val explanation: String,
+              val vocabulary: List<Pair<String, String>>
+          )'''
+          if old_data not in s:
+              raise SystemExit('Lesson model block not found')
+          s = s.replace(old_data, new_data)
+
+          old_app = '''private fun HangeulAiApp() {
+              var selectedTab by remember { mutableStateOf(AppTab.Home) }
+
+              Scaffold('''
+          new_app = '''private fun HangeulAiApp() {
+              var selectedTab by remember { mutableStateOf(AppTab.Home) }
+              var lessonIndex by remember { mutableStateOf((java.time.LocalDate.now().dayOfYear - 1) % lessonCatalog.size) }
+              val currentLesson = lessonCatalog[lessonIndex]
+
+              Scaffold('''
+          if old_app not in s:
+              raise SystemExit('HangeulAiApp header not found')
+          s = s.replace(old_app, new_app)
+
+          s = s.replace('lesson = sampleLesson,\n                    onLearn = { selectedTab = AppTab.Learn },', 'lesson = currentLesson,\n                    onNextLesson = { lessonIndex = (lessonIndex + 1) % lessonCatalog.size },\n                    onLearn = { selectedTab = AppTab.Learn },')
+          s = s.replace('AppTab.Learn -> LearnScreen(sampleLesson)', 'AppTab.Learn -> LearnScreen(currentLesson)')
+          s = s.replace('AppTab.Tutor -> AiTutorScreen(sampleLesson)', 'AppTab.Tutor -> AiTutorScreen(currentLesson)')
+
+          old_sig = '''private fun HomeScreen(
+              lesson: Lesson,
+              onLearn: () -> Unit,
+              onWrite: () -> Unit,
+              onTutor: () -> Unit
+          )'''
+          new_sig = '''private fun HomeScreen(
+              lesson: Lesson,
+              onNextLesson: () -> Unit,
+              onLearn: () -> Unit,
+              onWrite: () -> Unit,
+              onTutor: () -> Unit
+          )'''
+          if old_sig not in s:
+              raise SystemExit('HomeScreen signature not found')
+          s = s.replace(old_sig, new_sig)
+
+          old_card = '''                Text(lesson.korean, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+                  Spacer(Modifier.height(7.dp))
+                  Text(lesson.translation, color = Muted, fontSize = 16.sp)
+                  Spacer(Modifier.height(18.dp))
+                  Button(
+                      onClick = onLearn,
+                      colors = ButtonDefaults.buttonColors(containerColor = Ink),
+                      modifier = Modifier.fillMaxWidth().height(52.dp)
+                  ) {
+                      Text("오늘 학습하기 →", fontWeight = FontWeight.Bold)
+                  }'''
+          new_card = '''                Text(lesson.korean, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+                  Spacer(Modifier.height(7.dp))
+                  Text(lesson.translation, color = Muted, fontSize = 16.sp)
+                  Spacer(Modifier.height(7.dp))
+                  Text("${lesson.speaker} · ${lesson.level}", color = Color.Gray, fontSize = 12.sp)
+                  Spacer(Modifier.height(18.dp))
+                  Button(
+                      onClick = onLearn,
+                      colors = ButtonDefaults.buttonColors(containerColor = Ink),
+                      modifier = Modifier.fillMaxWidth().height(52.dp)
+                  ) {
+                      Text("오늘 학습하기 →", fontWeight = FontWeight.Bold)
+                  }
+                  Spacer(Modifier.height(8.dp))
+                  TextButton(onClick = onNextLesson, modifier = Modifier.align(Alignment.End)) {
+                      Text("다른 문장 보기 ↻", color = Accent, fontWeight = FontWeight.Bold)
+                  }'''
+          if old_card not in s:
+              raise SystemExit('Home lesson card block not found')
+          s = s.replace(old_card, new_card)
+
+          old_understand = '''        Text("문장 이해하기", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+              Spacer(Modifier.height(10.dp))
+              Text(lesson.explanation, lineHeight = 25.sp, color = Color(0xFF5F5B55))
+              Spacer(Modifier.height(20.dp))'''
+          new_understand = '''        Text("쉬운 한국어", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+              Spacer(Modifier.height(8.dp))
+              Text(lesson.simpleKorean, lineHeight = 25.sp, color = Color(0xFF5F5B55))
+              Spacer(Modifier.height(18.dp))
+              Text("日本語", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+              Spacer(Modifier.height(6.dp))
+              Text(lesson.japanese, lineHeight = 24.sp, color = Muted)
+              Spacer(Modifier.height(22.dp))
+              Text("문법 포인트", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+              Spacer(Modifier.height(10.dp))
+              lesson.grammar.forEach { point ->
+                  Card(
+                      colors = CardDefaults.cardColors(containerColor = Color.White),
+                      shape = RoundedCornerShape(16.dp),
+                      modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                  ) {
+                      Column(Modifier.padding(14.dp)) {
+                          Text(point.pattern, color = Accent, fontWeight = FontWeight.ExtraBold)
+                          Spacer(Modifier.height(4.dp))
+                          Text(point.meaning, color = Muted, lineHeight = 22.sp, fontSize = 14.sp)
+                      }
+                  }
+              }
+              Spacer(Modifier.height(14.dp))
+              Text("예문", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+              Spacer(Modifier.height(8.dp))
+              Text(lesson.example, lineHeight = 24.sp)
+              Spacer(Modifier.height(18.dp))
+              Text("문장 이해하기", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+              Spacer(Modifier.height(8.dp))
+              Text(lesson.explanation, lineHeight = 25.sp, color = Color(0xFF5F5B55))
+              Spacer(Modifier.height(20.dp))'''
+          if old_understand not in s:
+              raise SystemExit('Learn explanation block not found')
+          s = s.replace(old_understand, new_understand)
+
+          p.write_text(s)
+          PY
+      - name: Commit integration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add android/app/src/main/java/com/manso/hangeulai/MainActivity.kt
+          git commit -m 'Integrate Infinite Challenge lesson catalog'
+          git push origin HEAD:android-mvp
