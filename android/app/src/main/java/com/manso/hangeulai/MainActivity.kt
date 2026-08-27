@@ -73,23 +73,20 @@ private enum class AppTab(val label: String, val icon: String) {
 }
 
 data class Lesson(
+    val id: String,
+    val collection: String,
+    val speaker: String,
     val korean: String,
+    val simpleKorean: String,
     val translation: String,
+    val japanese: String,
+    val grammar: List<GrammarPoint>,
+    val example: String,
     val level: String,
+    val category: List<String>,
+    val sourceType: String,
     val explanation: String,
     val vocabulary: List<Pair<String, String>>
-)
-
-private val sampleLesson = Lesson(
-    korean = "시작이 반이다.",
-    translation = "Well begun is half done.",
-    level = "A1",
-    explanation = "무언가를 시작하는 일이 가장 어려울 때가 많아요. 일단 시작했다면 이미 중요한 첫걸음을 내디딘 것입니다.",
-    vocabulary = listOf(
-        "시작" to "start · beginning",
-        "반" to "half",
-        "이다" to "to be"
-    )
 )
 
 class MainActivity : ComponentActivity() {
@@ -106,6 +103,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun HangeulAiApp() {
     var selectedTab by remember { mutableStateOf(AppTab.Home) }
+    var lessonIndex by remember { mutableStateOf((java.time.LocalDate.now().dayOfYear - 1) % lessonCatalog.size) }
+    val currentLesson = lessonCatalog[lessonIndex]
 
     Scaffold(
         containerColor = WarmBackground,
@@ -129,14 +128,15 @@ private fun HangeulAiApp() {
         ) {
             when (selectedTab) {
                 AppTab.Home -> HomeScreen(
-                    lesson = sampleLesson,
+                    lesson = currentLesson,
+                    onNextLesson = { lessonIndex = (lessonIndex + 1) % lessonCatalog.size },
                     onLearn = { selectedTab = AppTab.Learn },
                     onWrite = { selectedTab = AppTab.Write },
                     onTutor = { selectedTab = AppTab.Tutor }
                 )
-                AppTab.Learn -> LearnScreen(sampleLesson)
+                AppTab.Learn -> LearnScreen(currentLesson)
                 AppTab.Write -> WritingScreen()
-                AppTab.Tutor -> AiTutorScreen(sampleLesson)
+                AppTab.Tutor -> AiTutorScreen(currentLesson)
             }
         }
     }
@@ -145,6 +145,7 @@ private fun HangeulAiApp() {
 @Composable
 private fun HomeScreen(
     lesson: Lesson,
+    onNextLesson: () -> Unit,
     onLearn: () -> Unit,
     onWrite: () -> Unit,
     onTutor: () -> Unit
@@ -183,6 +184,8 @@ private fun HomeScreen(
                 Text(lesson.korean, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
                 Spacer(Modifier.height(7.dp))
                 Text(lesson.translation, color = Muted, fontSize = 16.sp)
+                Spacer(Modifier.height(7.dp))
+                Text("${lesson.speaker} · ${lesson.level}", color = Color.Gray, fontSize = 12.sp)
                 Spacer(Modifier.height(18.dp))
                 Button(
                     onClick = onLearn,
@@ -190,6 +193,10 @@ private fun HomeScreen(
                     modifier = Modifier.fillMaxWidth().height(52.dp)
                 ) {
                     Text("오늘 학습하기 →", fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onNextLesson, modifier = Modifier.align(Alignment.End)) {
+                    Text("다른 문장 보기 ↻", color = Accent, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -361,8 +368,36 @@ private fun LearnScreen(lesson: Lesson) {
         }
 
         Spacer(Modifier.height(22.dp))
-        Text("문장 이해하기", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+        Text("쉬운 한국어", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+        Spacer(Modifier.height(8.dp))
+        Text(lesson.simpleKorean, lineHeight = 25.sp, color = Color(0xFF5F5B55))
+        Spacer(Modifier.height(18.dp))
+        Text("日本語", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Spacer(Modifier.height(6.dp))
+        Text(lesson.japanese, lineHeight = 24.sp, color = Muted)
+        Spacer(Modifier.height(22.dp))
+        Text("문법 포인트", fontWeight = FontWeight.Bold, fontSize = 20.sp)
         Spacer(Modifier.height(10.dp))
+        lesson.grammar.forEach { point ->
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Text(point.pattern, color = Accent, fontWeight = FontWeight.ExtraBold)
+                    Spacer(Modifier.height(4.dp))
+                    Text(point.meaning, color = Muted, lineHeight = 22.sp, fontSize = 14.sp)
+                }
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        Text("예문", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+        Spacer(Modifier.height(8.dp))
+        Text(lesson.example, lineHeight = 24.sp)
+        Spacer(Modifier.height(18.dp))
+        Text("문장 이해하기", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+        Spacer(Modifier.height(8.dp))
         Text(lesson.explanation, lineHeight = 25.sp, color = Color(0xFF5F5B55))
         Spacer(Modifier.height(20.dp))
         OutlinedButton(
