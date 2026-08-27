@@ -1,0 +1,155 @@
+name: Patch Home TTS and Gemma Link
+
+on:
+  push:
+    branches: [android-mvp]
+    paths:
+      - '.github/workflows/patch-home-tts-model-link.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: android-mvp
+
+      - name: Patch Korean line height and prefer Google TTS
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('android/app/src/main/java/com/manso/hangeulai/MainActivity.kt')
+          s = p.read_text()
+
+          replacements = [
+              (
+                  'Text(lesson.korean, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)',
+                  'Text(lesson.korean, fontSize = 30.sp, lineHeight = 37.sp, fontWeight = FontWeight.ExtraBold)'
+              ),
+              (
+                  'Text(lesson.korean, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold)',
+                  'Text(lesson.korean, fontSize = 34.sp, lineHeight = 42.sp, fontWeight = FontWeight.ExtraBold)'
+              ),
+              ('var rate by remember { mutableStateOf(0.9f) }', 'var rate by remember { mutableStateOf(1.0f) }'),
+              ('FilterChip(selected = rate == 0.9f, onClick = { rate = 0.9f }, label = { Text("1.0× 일반") })',
+               'FilterChip(selected = rate == 1.0f, onClick = { rate = 1.0f }, label = { Text("1.0× 일반") })')
+          ]
+          for old, new in replacements:
+              if old not in s:
+                  raise SystemExit(f'Target not found: {old}')
+              s = s.replace(old, new, 1)
+
+          old = '''    DisposableEffect(Unit) {
+        val engine = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                tts?.language = Locale.KOREAN
+            }
+        }
+        tts = engine
+        onDispose {
+            engine.stop()
+            engine.shutdown()
+        }
+    }'''
+
+          new = '''    DisposableEffect(Unit) {
+        // Prefer Google Speech Services when it is installed. Samsung/default TTS
+        // remains the fallback so listening still works on every device.
+        val hasGoogleTts = runCatching {
+            context.packageManager.getApplicationInfo("com.google.android.tts", 0)
+        }.isSuccess
+
+        var engineRef: TextToSpeech? = null
+        val listener = TextToSpeech.OnInitListener { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                engineRef?.language = Locale.KOREAN
+                val bestOfflineKoreanVoice = engineRef?.voices
+                    ?.filter { it.locale.language == "ko" && !it.isNetworkConnectionRequired }
+                    ?.maxByOrNull { it.quality }
+                if (bestOfflineKoreanVoice != null) {
+                    engineRef?.voice = bestOfflineKoreanVoice
+                }
+            }
+        }
+
+        val engine = if (hasGoogleTts) {
+            TextToSpeech(context, listener, "com.google.android.tts")
+        } else {
+            TextToSpeech(context, listener)
+        }
+        engineRef = engine
+        tts = engine
+
+        onDispose {
+            engine.stop()
+            engine.shutdown()
+        }
+    }'''
+
+          if old not in s:
+              raise SystemExit('TTS initialization block not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+
+      - name: Add official Gemma download link to tutor screen
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('android/app/src/main/java/com/manso/hangeulai/AiTutorScreen.kt')
+          s = p.read_text()
+
+          if 'import android.content.Intent' not in s:
+              s = s.replace('package com.manso.hangeulai\n\n', 'package com.manso.hangeulai\n\nimport android.content.Intent\nimport android.net.Uri\n', 1)
+
+          old = '''                    Text("Gemma 3 1B IT", fontWeight = FontWeight.ExtraBold, fontSize = 19.sp)
+                    Text("약 584MB · 최초 1회 설치 · Wi-Fi 권장", color = Color.Gray, fontSize = 12.sp)
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) },
+                        enabled = !isBusy,
+                        colors = ButtonDefaults.buttonColors(containerColor = TutorPurple),
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(if (isBusy) "처리 중…" else "Gemma 모델 가져오기") }
+                    Spacer(Modifier.height(10.dp))
+                    Text("현재 테스트 버전에서는 .litertlm 파일을 한 번 선택해야 합니다. AI Edge Gallery가 받은 모델은 Android 앱 전용 저장공간에 있어 Hangeul AI가 직접 읽을 수 없습니다.", color = Color.Gray, fontSize = 11.sp, lineHeight = 17.sp)'''
+
+          new = '''                    Text("Gemma 3 1B IT", fontWeight = FontWeight.ExtraBold, fontSize = 19.sp)
+                    Text("최초 1회 설치 · Wi-Fi 권장", color = Color.Gray, fontSize = 12.sp)
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = {
+                            val url = "https://huggingface.co/litert-community/Gemma3-1B-IT/blob/main/Gemma3-1B-IT_q4_ekv1280_sm8550.litertlm"
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        },
+                        enabled = !isBusy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("공식 Gemma 다운로드 열기 ↗") }
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) },
+                        enabled = !isBusy,
+                        colors = ButtonDefaults.buttonColors(containerColor = TutorPurple),
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(if (isBusy) "처리 중…" else "다운로드한 모델 선택") }
+                    Spacer(Modifier.height(10.dp))
+                    Text("Hugging Face에서 Gemma 라이선스에 동의한 뒤 .litertlm 파일을 다운로드하고, 위 버튼으로 파일을 선택하세요. 현재 테스트 버전에서는 모델을 한 번 직접 가져와야 합니다.", color = Color.Gray, fontSize = 11.sp, lineHeight = 17.sp)'''
+
+          if old not in s:
+              raise SystemExit('Gemma setup block not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add android/app/src/main/java/com/manso/hangeulai/MainActivity.kt android/app/src/main/java/com/manso/hangeulai/AiTutorScreen.kt
+          git commit -m 'Improve Korean text spacing, TTS voice, and Gemma setup'
+          git push origin HEAD:android-mvp
