@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.manso.hangeulai"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.manso.hangeulai"
