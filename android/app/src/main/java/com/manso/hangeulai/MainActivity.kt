@@ -57,6 +57,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
+import com.manso.hangeulai.expressions.KoreanExpressionRepository
+import com.manso.hangeulai.expressions.KoreanExpressionScreen
 
 private val WarmBackground = Color(0xFFF7F5F0)
 private val Ink = Color(0xFF121212)
@@ -105,6 +107,9 @@ private fun HangeulAiApp() {
     var selectedTab by remember { mutableStateOf(AppTab.Home) }
     var lessonIndex by remember { mutableStateOf((java.time.LocalDate.now().dayOfYear - 1) % lessonCatalog.size) }
     val currentLesson = lessonCatalog[lessonIndex]
+    val context = LocalContext.current
+    val realExpressions = remember { KoreanExpressionRepository.load(context) }
+    var showRealExpressions by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = WarmBackground,
@@ -134,7 +139,15 @@ private fun HangeulAiApp() {
                     onWrite = { selectedTab = AppTab.Write },
                     onTutor = { selectedTab = AppTab.Tutor }
                 )
-                AppTab.Learn -> LearnScreen(currentLesson)
+                AppTab.Learn -> if (showRealExpressions) {
+                    KoreanExpressionScreen(
+                        expressions = realExpressions,
+                        language = "ko",
+                        onBack = { showRealExpressions = false }
+                    )
+                } else {
+                    LearnScreen(currentLesson, onOpenRealExpressions = { showRealExpressions = true })
+                }
                 AppTab.Write -> WritingScreen()
                 AppTab.Tutor -> AiTutorScreen(currentLesson)
             }
@@ -167,7 +180,11 @@ private fun HomeScreen(
         Text("오늘도 한국어\n한 걸음!", fontSize = 36.sp, lineHeight = 40.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(8.dp))
         Text("읽고, 듣고, 쓰고, 궁금한 건 AI 튜터에게 물어보세요.", color = Muted, lineHeight = 22.sp)
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
+        OutlinedButton(onClick = onOpenRealExpressions, modifier = Modifier.fillMaxWidth()) {
+            Text("💬 한국인이 실제로 쓰는 표현 배우기")
+        }
+        Spacer(Modifier.height(16.dp))
 
         Card(
             colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -275,7 +292,7 @@ private fun MiniStatCard(label: String, value: String, modifier: Modifier = Modi
 }
 
 @Composable
-private fun LearnScreen(lesson: Lesson) {
+private fun LearnScreen(lesson: Lesson, onOpenRealExpressions: () -> Unit = {}) {
     val context = LocalContext.current
     var rate by remember { mutableStateOf(1.0f) }
     var saved by remember {
