@@ -1,0 +1,33 @@
+name: Apply Real Korean Expressions
+
+on:
+  push:
+    branches:
+      - "feature/real-korean-expressions"
+    paths:
+      - "scripts/patch_real_korean_expressions.py"
+      - ".github/workflows/apply-real-korean-expressions.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/real-korean-expressions
+      - name: Apply integration patch
+        run: python scripts/patch_real_korean_expressions.py
+      - name: Commit integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android/app/src/main/java/com/manso/hangeulai/MainActivity.kt
+          if ! git diff --cached --quiet; then
+            git commit -m "Expose real Korean expressions from Learn tab"
+            git push origin HEAD:feature/real-korean-expressions
+          fi
