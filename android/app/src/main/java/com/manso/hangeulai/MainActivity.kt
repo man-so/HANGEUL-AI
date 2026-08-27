@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,7 +53,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
@@ -61,8 +61,11 @@ private val WarmBackground = Color(0xFFF7F5F0)
 private val Ink = Color(0xFF121212)
 private val Accent = Color(0xFFE84C3D)
 private val Purple = Color(0xFF7457FF)
+private val SoftPurple = Color(0xFFE9DDFC)
+private val Muted = Color(0xFF6E6B65)
 
 private enum class AppTab(val label: String, val icon: String) {
+    Home("홈", "⌂"),
     Learn("학습", "📖"),
     Write("쓰기", "✍"),
     Tutor("AI 튜터", "✦")
@@ -101,7 +104,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun HangeulAiApp() {
-    var selectedTab by remember { mutableStateOf(AppTab.Learn) }
+    var selectedTab by remember { mutableStateOf(AppTab.Home) }
 
     Scaffold(
         containerColor = WarmBackground,
@@ -124,10 +127,141 @@ private fun HangeulAiApp() {
                 .padding(innerPadding)
         ) {
             when (selectedTab) {
+                AppTab.Home -> HomeScreen(
+                    lesson = sampleLesson,
+                    onLearn = { selectedTab = AppTab.Learn },
+                    onWrite = { selectedTab = AppTab.Write },
+                    onTutor = { selectedTab = AppTab.Tutor }
+                )
                 AppTab.Learn -> LearnScreen(sampleLesson)
                 AppTab.Write -> WritingScreen()
                 AppTab.Tutor -> TutorScreen(sampleLesson)
             }
+        }
+    }
+}
+
+@Composable
+private fun HomeScreen(
+    lesson: Lesson,
+    onLearn: () -> Unit,
+    onWrite: () -> Unit,
+    onTutor: () -> Unit
+) {
+    val context = LocalContext.current
+    val saved = remember {
+        context.getSharedPreferences("hangeul_ai", 0)
+            .getBoolean("saved_${lesson.korean}", false)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 24.dp)
+    ) {
+        Text("HANGEUL AI", color = Accent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+        Spacer(Modifier.height(6.dp))
+        Text("오늘도 한국어\n한 걸음!", fontSize = 36.sp, lineHeight = 40.sp, fontWeight = FontWeight.ExtraBold)
+        Spacer(Modifier.height(8.dp))
+        Text("읽고, 듣고, 쓰고, 궁금한 건 AI 튜터에게 물어보세요.", color = Muted, lineHeight = 22.sp)
+        Spacer(Modifier.height(24.dp))
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            shape = RoundedCornerShape(28.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(22.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("오늘의 한국어", color = Accent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Spacer(Modifier.weight(1f))
+                    Text(lesson.level, modifier = Modifier.background(WarmBackground, RoundedCornerShape(20.dp)).padding(horizontal = 10.dp, vertical = 5.dp), fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(18.dp))
+                Text(lesson.korean, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+                Spacer(Modifier.height(7.dp))
+                Text(lesson.translation, color = Muted, fontSize = 16.sp)
+                Spacer(Modifier.height(18.dp))
+                Button(
+                    onClick = onLearn,
+                    colors = ButtonDefaults.buttonColors(containerColor = Ink),
+                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                ) {
+                    Text("오늘 학습하기 →", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(26.dp))
+        Text("오늘의 학습", fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
+        Spacer(Modifier.height(12.dp))
+        HomeActionCard("📖", "한 문장 배우기", "어휘 · 문법 · 듣기", onLearn)
+        Spacer(Modifier.height(10.dp))
+        HomeActionCard("✍", "한글 쓰기", "오늘의 글자 · ㄱ", onWrite)
+        Spacer(Modifier.height(10.dp))
+        HomeActionCard("✦", "AI 한국어 튜터", "궁금한 표현 물어보기", onTutor, accent = Purple)
+
+        Spacer(Modifier.height(26.dp))
+        Text("나의 학습", fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            MiniStatCard("저장한 문장", if (saved) "1" else "0", Modifier.weight(1f))
+            MiniStatCard("오늘 목표", "0 / 3", Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(18.dp))
+        Text("학습 기록과 연속 학습 일수는 다음 버전에서 실제 데이터와 연결할 예정입니다.", color = Color.Gray, fontSize = 12.sp, lineHeight = 18.sp)
+    }
+}
+
+@Composable
+private fun HomeActionCard(
+    icon: String,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    accent: Color = Ink
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth().clickable { onClick() }
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier.size(46.dp).background(
+                    if (accent == Purple) SoftPurple else WarmBackground,
+                    RoundedCornerShape(15.dp)
+                ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(icon, color = accent, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                Spacer(Modifier.height(3.dp))
+                Text(subtitle, color = Muted, fontSize = 13.sp)
+            }
+            Text("→", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        }
+    }
+}
+
+@Composable
+private fun MiniStatCard(label: String, value: String, modifier: Modifier = Modifier) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(18.dp),
+        modifier = modifier
+    ) {
+        Column(Modifier.padding(18.dp)) {
+            Text(label, color = Muted, fontSize = 12.sp)
+            Spacer(Modifier.height(6.dp))
+            Text(value, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp)
         }
     }
 }
@@ -182,7 +316,7 @@ private fun LearnScreen(lesson: Lesson) {
                 Spacer(Modifier.height(20.dp))
                 Text(lesson.korean, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold)
                 Spacer(Modifier.height(8.dp))
-                Text(lesson.translation, fontSize = 17.sp, color = Color(0xFF6E6B65))
+                Text(lesson.translation, fontSize = 17.sp, color = Muted)
                 Spacer(Modifier.height(22.dp))
 
                 lesson.vocabulary.chunked(2).forEach { row ->
@@ -355,7 +489,7 @@ private fun TutorScreen(lesson: Lesson) {
         Text("AI 튜터", color = Purple, fontWeight = FontWeight.Bold, fontSize = 13.sp)
         Text("궁금한 건 바로 묻고\n계속 배워요.", fontSize = 34.sp, lineHeight = 39.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(10.dp))
-        Text("현재 단계는 UI와 학습 흐름 검증을 위한 Mock AI입니다. 다음 단계에서 온디바이스 Gemma로 교체합니다.", color = Color.Gray, lineHeight = 22.sp)
+        Text("현재 단계는 UI와 학습 흐름 검증을 위한 Mock AI입니다. 다음 단계에서 온디바이스 AI Provider로 교체합니다.", color = Color.Gray, lineHeight = 22.sp)
         Spacer(Modifier.height(24.dp))
 
         Card(
