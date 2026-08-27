@@ -1,0 +1,122 @@
+name: Patch Compact Settings
+
+on:
+  push:
+    branches: [android-mvp]
+    paths: ['.github/workflows/patch-compact-settings.yml']
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: android-mvp
+      - name: Add compact settings screen
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('android/app/src/main/java/com/manso/hangeulai/MainActivity.kt')
+          s=p.read_text()
+          s=s.replace('import android.speech.tts.TextToSpeech\n','import android.speech.tts.TextToSpeech\nimport android.speech.tts.Voice\n') if 'import android.speech.tts.Voice' not in s else s
+          s=s.replace('    var lessonIndex by remember { mutableStateOf((java.time.LocalDate.now().dayOfYear - 1) % lessonCatalog.size) }','    var lessonIndex by remember { mutableStateOf((java.time.LocalDate.now().dayOfYear - 1) % lessonCatalog.size) }\n    var showSettings by remember { mutableStateOf(false) }')
+          s=s.replace('''            when (selectedTab) {
+                AppTab.Home -> HomeScreen(''','''            if (showSettings) {
+                SettingsScreen(onBack = { showSettings = false })
+            } else when (selectedTab) {
+                AppTab.Home -> HomeScreen(''')
+          s=s.replace('''                    onTutor = { selectedTab = AppTab.Tutor }
+                )''','''                    onTutor = { selectedTab = AppTab.Tutor },
+                    onSettings = { showSettings = true }
+                )''',1)
+          s=s.replace('''    onWrite: () -> Unit,
+    onTutor: () -> Unit
+) {''','''    onWrite: () -> Unit,
+    onTutor: () -> Unit,
+    onSettings: () -> Unit
+) {''',1)
+          s=s.replace('''        Text("HANGEUL AI", color = Accent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+        Spacer(Modifier.height(6.dp))''','''        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text("HANGEUL AI", color = Accent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            Spacer(Modifier.weight(1f))
+            Text("⚙", fontSize = 20.sp, modifier = Modifier.clickable { onSettings() }.padding(8.dp))
+        }
+        Spacer(Modifier.height(6.dp))''',1)
+          s=s.replace('    var rate by remember { mutableStateOf(1.0f) }','    val prefs = remember { context.getSharedPreferences("hangeul_ai", 0) }\n    val rate = prefs.getFloat("tts_rate", 1.0f)',1)
+          s=s.replace('''                val voice = engineRef?.voices?.filter { it.locale.language == "ko" && !it.isNetworkConnectionRequired }?.maxByOrNull { it.quality }
+                if (voice != null) engineRef?.voice = voice''','''                val voices = engineRef?.voices?.filter { it.locale.language == "ko" } ?: emptySet()
+                val savedVoice = prefs.getString("tts_voice", null)
+                val voice = voices.firstOrNull { it.name == savedVoice } ?: voices.filter { !it.isNetworkConnectionRequired }.maxByOrNull { it.quality } ?: voices.firstOrNull()
+                if (voice != null) engineRef?.voice = voice''',1)
+          old='''                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = rate == 0.7f, onClick = { rate = 0.7f }, label = { Text("0.7× 천천히") })
+                    FilterChip(selected = rate == 1.0f, onClick = { rate = 1.0f }, label = { Text("1.0× 일반") })
+                }
+                Spacer(Modifier.height(10.dp))'''
+          s=s.replace(old,'                Spacer(Modifier.height(10.dp))\n',1)
+          insert='''
+
+@Composable
+private fun SettingsScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("hangeul_ai", 0) }
+    var voices by remember { mutableStateOf<List<Voice>>(emptyList()) }
+    var selectedVoice by remember { mutableStateOf(prefs.getString("tts_voice", null)) }
+    var rate by remember { mutableStateOf(prefs.getFloat("tts_rate", 1.0f)) }
+    var previewTts by remember { mutableStateOf<TextToSpeech?>(null) }
+    DisposableEffect(Unit) {
+        var ref: TextToSpeech? = null
+        val listener = TextToSpeech.OnInitListener { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                ref?.language = Locale.KOREAN
+                voices = ref?.voices?.filter { it.locale.language == "ko" }?.sortedWith(compareBy<Voice> { it.isNetworkConnectionRequired }.thenByDescending { it.quality }) ?: emptyList()
+            }
+        }
+        val hasGoogle = runCatching { context.packageManager.getApplicationInfo("com.google.android.tts", 0) }.isSuccess
+        val engine = if (hasGoogle) TextToSpeech(context, listener, "com.google.android.tts") else TextToSpeech(context, listener)
+        ref = engine; previewTts = engine
+        onDispose { engine.stop(); engine.shutdown() }
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
+        TextButton(onClick = onBack) { Text("← 돌아가기", color = Ink) }
+        Spacer(Modifier.height(8.dp))
+        Text("설정", fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+        Text("듣기 설정만 간단하게 바꿀 수 있어요.", color = Muted)
+        Spacer(Modifier.height(24.dp))
+        Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp)) {
+                Text("한국어 음성", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.height(8.dp))
+                voices.take(4).forEachIndexed { index, voice ->
+                    FilterChip(selected = selectedVoice == voice.name, onClick = {
+                        selectedVoice = voice.name; previewTts?.voice = voice
+                        prefs.edit().putString("tts_voice", voice.name).apply()
+                        previewTts?.setSpeechRate(rate); previewTts?.speak("안녕하세요. 한국어를 같이 배워요.", TextToSpeech.QUEUE_FLUSH, null, "preview")
+                    }, label = { Text("음성 ${index + 1}" + if (voice.isNetworkConnectionRequired) " · 온라인" else "") })
+                }
+                Spacer(Modifier.height(18.dp))
+                Text("말하기 속도", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = rate == 0.7f, onClick = { rate = 0.7f; prefs.edit().putFloat("tts_rate", rate).apply() }, label = { Text("천천히") })
+                    FilterChip(selected = rate == 1.0f, onClick = { rate = 1.0f; prefs.edit().putFloat("tts_rate", rate).apply() }, label = { Text("일반") })
+                }
+            }
+        }
+    }
+}
+'''
+          marker='\n@Composable\nprivate fun WritingScreen'
+          if marker not in s: raise SystemExit('WritingScreen marker missing')
+          s=s.replace(marker,insert+marker,1)
+          p.write_text(s)
+          PY
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add android/app/src/main/java/com/manso/hangeulai/MainActivity.kt
+          git commit -m 'Move TTS controls into compact settings screen'
+          git push origin HEAD:android-mvp
