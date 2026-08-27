@@ -1,0 +1,1 @@
+document.querySelectorAll('[data-tts]').forEach((btn)=>{btn.addEventListener('click',()=>{if(!('speechSynthesis' in window))return;window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(btn.dataset.tts);u.lang='ko-KR';u.rate=.88;window.speechSynthesis.speak(u);});});
