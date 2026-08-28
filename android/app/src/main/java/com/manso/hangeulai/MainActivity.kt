@@ -288,7 +288,8 @@ private fun MiniStatCard(label: String, value: String, modifier: Modifier = Modi
 private fun LearnScreen(lesson: Lesson) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("hangeul_ai", 0) }
-    val rate = prefs.getFloat("tts_rate", 1.0f)
+    val rate = prefs.getFloat("tts_rate", 0.9f)
+    val pitch = prefs.getFloat("tts_pitch", 0.88f)
     var saved by remember {
         mutableStateOf(
             context.getSharedPreferences("hangeul_ai", 0)
@@ -371,6 +372,7 @@ private fun LearnScreen(lesson: Lesson) {
                 Button(
                     onClick = {
                         tts?.setSpeechRate(rate)
+                        tts?.setPitch(pitch)
                         tts?.speak(lesson.korean, TextToSpeech.QUEUE_FLUSH, null, "lesson")
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Ink),
@@ -435,7 +437,8 @@ private fun SettingsScreen(onBack: () -> Unit) {
     val prefs = remember { context.getSharedPreferences("hangeul_ai", 0) }
     var voices by remember { mutableStateOf<List<Voice>>(emptyList()) }
     var selectedVoice by remember { mutableStateOf(prefs.getString("tts_voice", null)) }
-    var rate by remember { mutableStateOf(prefs.getFloat("tts_rate", 1.0f)) }
+    var rate by remember { mutableStateOf(prefs.getFloat("tts_rate", 0.9f)) }
+    var pitch by remember { mutableStateOf(prefs.getFloat("tts_pitch", 0.88f)) }
     var previewTts by remember { mutableStateOf<TextToSpeech?>(null) }
 
     DisposableEffect(Unit) {
@@ -443,10 +446,16 @@ private fun SettingsScreen(onBack: () -> Unit) {
         val listener = TextToSpeech.OnInitListener { status ->
             if (status == TextToSpeech.SUCCESS) {
                 ref?.language = Locale.KOREAN
-                voices = ref?.voices
+                val allKoreanVoices = ref?.voices
                     ?.filter { it.locale.language == "ko" }
                     ?.sortedWith(compareBy<Voice> { it.isNetworkConnectionRequired }.thenByDescending { it.quality })
                     ?: emptyList()
+                voices = allKoreanVoices.distinctBy { voice ->
+                    voice.name
+                        .lowercase()
+                        .replace(Regex("(network|local|offline|online|legacy|enhanced|compact|downloaded)"), "")
+                        .replace(Regex("[^a-z0-9가-힣]"), "")
+                }
             }
         }
         val hasGoogle = runCatching {
@@ -485,7 +494,7 @@ private fun SettingsScreen(onBack: () -> Unit) {
             Column(Modifier.padding(20.dp)) {
                 Text("한국어 음성", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Spacer(Modifier.height(8.dp))
-                voices.take(4).forEachIndexed { index, voice ->
+                voices.take(3).forEachIndexed { index, voice ->
                     FilterChip(
                         selected = selectedVoice == voice.name,
                         onClick = {
@@ -493,6 +502,7 @@ private fun SettingsScreen(onBack: () -> Unit) {
                             previewTts?.voice = voice
                             prefs.edit().putString("tts_voice", voice.name).apply()
                             previewTts?.setSpeechRate(rate)
+                            previewTts?.setPitch(pitch)
                             previewTts?.speak(
                                 "안녕하세요. 한국어를 같이 배워요.",
                                 TextToSpeech.QUEUE_FLUSH,
@@ -519,12 +529,40 @@ private fun SettingsScreen(onBack: () -> Unit) {
                         label = { Text("천천히") }
                     )
                     FilterChip(
-                        selected = rate == 1.0f,
+                        selected = rate == 0.9f,
                         onClick = {
-                            rate = 1.0f
+                            rate = 0.9f
                             prefs.edit().putFloat("tts_rate", rate).apply()
                         },
                         label = { Text("일반") }
+                    )
+                }
+
+                Spacer(Modifier.height(18.dp))
+                Text("목소리 톤", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = pitch == 0.88f,
+                        onClick = {
+                            pitch = 0.88f
+                            prefs.edit().putFloat("tts_pitch", pitch).apply()
+                            previewTts?.setPitch(pitch)
+                            previewTts?.setSpeechRate(rate)
+                            previewTts?.speak("안녕하세요. 한국어를 같이 배워요.", TextToSpeech.QUEUE_FLUSH, null, "pitch")
+                        },
+                        label = { Text("낮게") }
+                    )
+                    FilterChip(
+                        selected = pitch == 1.0f,
+                        onClick = {
+                            pitch = 1.0f
+                            prefs.edit().putFloat("tts_pitch", pitch).apply()
+                            previewTts?.setPitch(pitch)
+                            previewTts?.setSpeechRate(rate)
+                            previewTts?.speak("안녕하세요. 한국어를 같이 배워요.", TextToSpeech.QUEUE_FLUSH, null, "pitch")
+                        },
+                        label = { Text("기본") }
                     )
                 }
             }
