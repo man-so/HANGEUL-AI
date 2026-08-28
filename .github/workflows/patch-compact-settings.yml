@@ -1,0 +1,35 @@
+name: Patch Compact Settings
+
+on:
+  push:
+    branches:
+      - android-mvp
+    paths:
+      - '.github/workflows/patch-compact-settings.yml'
+      - 'scripts/patch_compact_settings.py'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: android-mvp
+
+      - name: Apply compact settings patch
+        run: python scripts/patch_compact_settings.py
+
+      - name: Commit app changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add android/app/src/main/java/com/manso/hangeulai/MainActivity.kt
+          if git diff --cached --quiet; then
+            echo 'No app changes to commit.'
+            exit 0
+          fi
+          git commit -m 'Move TTS controls into compact settings screen'
+          git push origin HEAD:android-mvp
